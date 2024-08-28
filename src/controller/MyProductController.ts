@@ -66,7 +66,7 @@ const getProduct = async (req: Request, res: Response) => {
 const updateMyProduct = async (req: Request, res: Response) => {
   try {
     const productId = req.params.productId;
-    console.log(req.user.role);
+    const isAdmin = req.user.role; // Assuming `req.user.role` is a boolean
 
     const product = await Product.findById(productId);
 
@@ -74,38 +74,52 @@ const updateMyProduct = async (req: Request, res: Response) => {
       return res.status(404).json({ message: "Product not found" });
     }
 
-    let imageUrl;
+    if (isAdmin) {
+      // True if the user is an admin
+      let imageUrl;
 
-    if (req.user.role) {
       if (req.file) {
+        // If a new file is uploaded, update the image URL
         imageUrl = await uploadImage(req.file as Express.Multer.File);
         product.imageUrl = imageUrl;
       }
+
+      // Update product details
       product.productname = req.body.productname;
       product.price = req.body.price;
       product.description = req.body.description;
       product.status = req.body.status;
+
+      // Save the updated product to the database
       await product.save();
-      res.status(200).send(product);
+
+      // Send back the updated product
+      return res.status(200).send(product);
+    } else {
+      // False if the user is a team member
+      // Create a new review associated with the product
+      const review = new Review({
+        userId: req.user._id,
+        productId: productId,
+        productname: req.body.productname,
+        price: req.body.price,
+        imageUrl: req.file
+          ? await uploadImage(req.file as Express.Multer.File)
+          : product.imageUrl, // Use existing image URL if no new file is uploaded
+        description: req.body.description,
+        status: req.body.status,
+        adminId: "", // Assuming the adminId field is required but not applicable here
+      });
+
+      // Save the review to the database
+      await review.save();
+
+      // Send back the new review
+      return res.status(200).send(review);
     }
-
-    const review = new Review({
-      userId: req.user._id,
-      productId: productId,
-      productname: req.body.productname,
-      price: req.body.price,
-      imageUrl: req.file
-        ? await uploadImage(req.file as Express.Multer.File)
-        : product.imageUrl,
-      description: req.body.description,
-      status: req.body.status,
-      adminId: "",
-    });
-
-    await review.save();
-    res.status(200).send(review);
   } catch (error) {
-    console.log("Error updating product:", error);
+    console.error("Error updating product:", error);
+    // Send back an error response if something goes wrong
     res.status(500).json({ message: "Something went wrong" });
   }
 };
